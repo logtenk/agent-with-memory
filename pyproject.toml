@@ -1,0 +1,41 @@
+[project]
+name = "agent-host"
+version = "0.1.0"
+description = "Local agent host with memory (Chroma), llama.cpp, and MCP tools."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{ name = "Your Name" }]
+
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "httpx",
+  "sse-starlette",
+  "pydantic>=2",
+  "chromadb",
+  "numpy",
+  "python-dotenv",
+  "orjson",
+  "docker",
+  "requests",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+  "black",
+  "pre-commit",
+  "sseclient-py",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.black]
+line-length = 100
