@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+httpx
+sse-starlette
+pydantic>=2
+chromadb
+numpy
+python-dotenv
+orjson
+docker
+sseclient-py 
+requests

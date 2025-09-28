@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data & cache
+src/agent_host/data/agents/*/memory/*
+cache/
+chroma/
+
+# Logs
+*.log
+logs/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Docker
+*.pid
+*.tar
