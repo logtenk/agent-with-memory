@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Dict, Any, AsyncGenerator
 from ..clients.llamacpp import stream_chat, nonstream_chat
 from .tools import TOOLS, list_tools_for_prompt
@@ -9,6 +10,8 @@ MAX_TURNS = 20  # pairs
 SYS_HEADER = """You are {character}.
 Impression of user: {impression}
 Current mood: {mood}
+Current date: {current_date}
+Current time: {current_time}
 Capabilities: {capabilities}
 Memory summary: {memory_summary}
 
@@ -47,10 +50,13 @@ AVAILABLE TOOLS:
 """
 
 def build_system_prompt(profile: Dict[str, Any]) -> str:
+    now = datetime.now()
     head = SYS_HEADER.format(
         character=profile["character"],
         impression=profile["impression_of_user"],
         mood=profile["current_mood"],
+        current_date=now.strftime("%Y-%m-%d"),
+        current_time=now.strftime("%H:%M:%S"),
         capabilities=", ".join(profile["capabilities"]),
         memory_summary=profile["memory_summary"]
     )
