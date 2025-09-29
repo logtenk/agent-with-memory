@@ -1,5 +1,12 @@
 import os, sys, json, requests
+try:
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass  # Py<3.7 or environments that don't support reconfigure
 
+# If your shell isn't UTF-8, this helps on Windows; harmless elsewhere
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 LLAMA_BASE = os.getenv("LLAMACPP_BASE_URL", "http://127.0.0.1:8001")  # change if needed
 
 def stream_chat(messages, model="local-llama", temperature=0.7, max_tokens=512):
@@ -14,6 +21,7 @@ def stream_chat(messages, model="local-llama", temperature=0.7, max_tokens=512):
     }
     with requests.post(url, json=payload, stream=True, timeout=600) as r:
         r.raise_for_status()
+        r.encoding = "utf-8"
         for line in r.iter_lines(decode_unicode=True):
             if not line:
                 continue
@@ -43,6 +51,7 @@ def nonstream_chat(messages, model="local-llama", temperature=0.7, max_tokens=51
     }
     r = requests.post(url, json=payload, timeout=600)
     r.raise_for_status()
+    r.encoding = "utf-8"
     data = r.json()
     return data["choices"][0]["message"]["content"]
 

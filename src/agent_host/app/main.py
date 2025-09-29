@@ -3,13 +3,12 @@ from sse_starlette.sse import EventSourceResponse
 from typing import AsyncGenerator
 import json
 
-from app.config import HOST, PORT, CHROMA_PERSIST_ROOT
-from app.agents import profiles
-from app.orchestrator.session import run_turn
-from app.models import ChatRequest, MemoryItem, RetrieveQuery, AgentProfile
-from app.memory import chroma_store
-from app.clients.mcp_runtime import up_according_to_config
-from app.orchestrator.tools import list_tools_for_prompt
+from agent_host.app.config import HOST, PORT, CHROMA_PERSIST_ROOT
+from agent_host.app.agents import profiles
+from agent_host.app.orchestrator.session import run_turn
+from agent_host.app.models import ChatRequest, MemoryItem, RetrieveQuery, AgentProfile
+from agent_host.app.memory import chroma_store
+from agent_host.app.orchestrator.tools import list_tools_for_prompt
 
 app = FastAPI(title="Local LLM Host")
 

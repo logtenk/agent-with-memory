@@ -43,7 +43,8 @@ def _mem_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]:
     agent_id = payload.get("agent_id", "default")
     query = payload["query"]
     k = int(payload.get("k", 6))
-    res = chroma_store.query_memories(agent_id, CHROMA_PERSIST_ROOT, query, k)
+    where = payload.get("where")
+    res = chroma_store.query_memories(agent_id, CHROMA_PERSIST_ROOT, query, k, where=where)
     return {"ok": True, "results": res}
 
 def _mem_update(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -61,12 +62,23 @@ def _mem_delete(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 register(ToolSpec(
     name="memory.insert",
-    description="Insert durable memory items (facts, preferences, events) into the agent's memory store.",
+    description="Insert durable memory items with flat metadata (type, date, time, tag).",
     schema={
         "type":"object",
         "properties":{
             "agent_id":{"type":"string","default":"default"},
-            "items":{"type":"array","items":{"type":"object"}}
+            "items":{"type":"array","items":{
+                "type":"object",
+                "properties":{
+                    "text":{"type":"string"},
+                    "type":{"type":"string"},
+                    "date":{"type":"integer"},
+                    "time":{"type":"integer"},
+                    "tag":{"type":"string"},
+                    "salience":{"type":"number"}
+                },
+                "required":["text"]
+            }}
         },
         "required":["items"]
     },
@@ -74,13 +86,14 @@ register(ToolSpec(
 ))
 register(ToolSpec(
     name="memory.retrieve",
-    description="Retrieve top-K relevant memories for a query.",
+    description="Retrieve top-K relevant memories for a query, optionally filtered by metadata.",
     schema={
         "type":"object",
         "properties":{
             "agent_id":{"type":"string","default":"default"},
             "query":{"type":"string"},
-            "k":{"type":"integer","default":6}
+            "k":{"type":"integer","default":6},
+            "where":{"type":"object"}   # pass-through to Chroma metadata filter
         },
         "required":["query"]
     },

@@ -18,6 +18,31 @@ TOOL CALLING CONVENTION:
 - After tool results arrive (as a tool message), continue your answer.
 - If no tool is helpful, continue normally.
 
+MEMORY SCHEMA (metadata; all optional but must be flat primitives):
+- type: string  (e.g., "preference" | "fact" | "event" | "task")
+- date: integer (YYYYMMDD, e.g., 20250928)
+- time: integer (HHMMSS, e.g., 143015)
+- tag:  string  (single tag, e.g., "travel")
+
+When inserting a durable fact/event, use:
+TOOL_CALL: {"name":"memory.insert","payload":{"items":[
+  {"text":"<short distilled statement>",
+   "type":"<type>", "date":20250928, "time":143015, "tag":"<tag>", "salience":0.8}
+]}}
+
+When retrieving with metadata filters, use `where`, e.g.:
+- by date newer than Sept 1, 2025:
+  {"name":"memory.retrieve","payload":{
+    "query":"<what you need>",
+    "k":6,
+    "where":{"date":{"$gt":20250901}}
+  }}
+- by a specific tag and type:
+  {"name":"memory.retrieve","payload":{
+    "query":"<topic>",
+    "where":{"tag":"travel","type":"preference"}
+  }}
+
 AVAILABLE TOOLS:
 """
 
