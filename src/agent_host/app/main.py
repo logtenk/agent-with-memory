@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response, status
 from sse_starlette.sse import EventSourceResponse
 from typing import AsyncGenerator
 import json
@@ -8,6 +8,8 @@ from agent_host.app.agents import profiles
 from agent_host.app.orchestrator.session import run_turn
 from agent_host.app.models import (
     AgentProfile,
+    AgentProfileCreate,
+    AgentProfilePatch,
     ChatMessage,
     ChatMessagePatch,
     ChatRequest,
@@ -36,7 +38,10 @@ async def get_tools():
 @app.post("/chat")
 async def chat(req: ChatRequest):
     """SSE endpoint: streams assistant tokens and finishes with a 'done' event."""
-    prof = profiles.read_profile(CHROMA_PERSIST_ROOT, req.agent_id)
+    try:
+        prof = profiles.read_profile(CHROMA_PERSIST_ROOT, req.agent_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     async def event_gen() -> AsyncGenerator[dict, None]:
         async for ev in run_turn(
@@ -98,11 +103,47 @@ async def delete_history(agent_id: str, message_id: str):
 
 # ------- Profiles (handy for editing agent settings from scripts) --------
 
+@app.get("/agents")
+async def list_agents():
+    agents = [p.model_dump() for p in profiles.list_profiles(CHROMA_PERSIST_ROOT)]
+    return {"agents": agents}
+
+
 @app.get("/agents/{agent_id}")
 async def get_agent(agent_id: str):
-    return profiles.read_profile(CHROMA_PERSIST_ROOT, agent_id).model_dump()
+    try:
+        return profiles.read_profile(CHROMA_PERSIST_ROOT, agent_id).model_dump()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-@app.post("/agents/{agent_id}")
-async def set_agent(agent_id: str, profile: AgentProfile):
-    profiles.write_profile(CHROMA_PERSIST_ROOT, profile)
-    return {"ok": True}
+
+@app.post("/agents", status_code=status.HTTP_201_CREATED)
+async def create_agent(profile: AgentProfileCreate):
+    try:
+        created = profiles.create_profile(
+            CHROMA_PERSIST_ROOT, AgentProfile(**profile.model_dump())
+        )
+    except FileExistsError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return {"ok": True, "profile": created.model_dump()}
+
+
+@app.patch("/agents/{agent_id}")
+async def patch_agent(agent_id: str, patch: AgentProfilePatch):
+    patch_data = patch.model_dump(exclude_unset=True, exclude_none=True)
+    try:
+        updated = profiles.update_profile(CHROMA_PERSIST_ROOT, agent_id, patch_data)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"ok": True, "profile": updated.model_dump()}
+
+
+@app.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str):
+    try:
+        profiles.delete_profile(CHROMA_PERSIST_ROOT, agent_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
