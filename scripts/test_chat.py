@@ -10,7 +10,7 @@ import requests
 import sseclient
 
 
-API_ROOT = "http://127.0.0.1:8080"
+API_ROOT = "http://127.0.0.1:8002"
 CHAT_URL = f"{API_ROOT}/chat"
 HISTORY_URL = f"{API_ROOT}/agents/{{agent_id}}/history"
 

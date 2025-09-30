@@ -3,9 +3,9 @@ services:
     image: my/llmimg:v0             # reuse your CUDA-enabled dev image
     container_name: llm_host
     working_dir: /workspace
-    stdin_open: true
-    tty: true
-    init: true
+    # stdin_open: true
+    # tty: true
+    # init: true
     volumes:
       - ./:/workspace                    # your project code (hot-reload/dev)
       - /mnt/c/Users/icymi/.lmstudio/models:/models:ro  # models (ro is fine)
@@ -16,14 +16,17 @@ services:
       HOST: "0.0.0.0"
       PORT: "8080"
       LD_LIBRARY_PATH: "/llama.cpp/build/bin:${LD_LIBRARY_PATH}"
+      PYTHONPATH : "/workspace/src:${PYTHONPATH}"
     # Expose the wrapper to localhost:8888 only (not the whole host):
+    expose:
+      - "8002"
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8002:8002"
     depends_on:
       - llama
       - mcp_duckduckgo
     command: >
-      bash -lc "uvicorn agent_host.app.main:app --host 0.0.0.0 --port 8080 --reload"
+      bash -lc "uvicorn agent_host.app.main:app --host 0.0.0.0 --port 8002 --reload"
     networks: [ llmnet ]
     # llm_host itself doesn't need GPU; remove if you prefer:
     # gpus: all
