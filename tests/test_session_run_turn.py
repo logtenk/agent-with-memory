@@ -9,8 +9,12 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from agent_host.app.orchestrator import history
 from agent_host.app.orchestrator import session
 
+@pytest.fixture()
+def anyio_backend():
+    return "asyncio"
 
-@pytest.mark.asyncio
+
+@pytest.mark.anyio
 async def test_run_turn_memory_insert_clears_history(tmp_path, monkeypatch):
     # point persistence to the tmp path
     monkeypatch.setattr(session, "CHROMA_PERSIST_ROOT", str(tmp_path))

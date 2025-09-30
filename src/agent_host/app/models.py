@@ -52,3 +52,17 @@ class AgentProfile(BaseModel):
     memory_path: str
     memory_summary: str
     tool_instructions: str
+
+
+class AgentProfileCreate(AgentProfile):
+    pass
+
+
+class AgentProfilePatch(BaseModel):
+    character: Optional[str] = None
+    impression_of_user: Optional[str] = None
+    current_mood: Optional[str] = None
+    capabilities: Optional[List[str]] = None
+    memory_path: Optional[str] = None
+    memory_summary: Optional[str] = None
+    tool_instructions: Optional[str] = None
