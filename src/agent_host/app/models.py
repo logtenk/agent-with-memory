@@ -14,7 +14,7 @@ class ChatChunk(BaseModel):
 
 class ChatResponse(BaseModel):
     text: str
-    used_tools: List[Dict[str, Any]] = []
+    used_tools: List[Dict[str, Any]] = Field(default_factory=list)
 
 class ChatMessage(BaseModel):
     message_id: str
@@ -31,9 +31,9 @@ class MemoryItem(BaseModel):
     memory_id: Optional[str] = None
     type: str
     text: str
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
     salience: float = 0.5
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
     last_seen_at: Optional[str] = None
 
@@ -41,6 +41,7 @@ class RetrieveQuery(BaseModel):
     agent_id: str = "default"
     query: str
     k: int = 6
+    where: Optional[Dict[str, Any]] = None
 
 class AgentProfile(BaseModel):
     agent_id: str
