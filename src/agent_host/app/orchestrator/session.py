@@ -70,14 +70,14 @@ async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, st
     system_prompt = build_system_prompt(profile)
 
     # Reload history from disk so external edits are respected
-    hist = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
+    hist_records = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
 
     # Append CURRENT user turn first (correct order)
     H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "user", user_text)
 
     # Build messages for the model: system + (disk history + this user)
     messages: List[Dict[str, str]] = [{"role":"system","content":system_prompt}]
-    messages.extend(hist)
+    messages.extend({"role": m["role"], "content": m["content"]} for m in hist_records)
     messages.append({"role":"user","content":user_text})
 
     used_tools: List[Dict[str, Any]] = []
@@ -142,7 +142,8 @@ async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, st
     )
     post_msgs = [{"role":"system","content":system_prompt}]
     # Reload again (user+assistant now on disk) to keep absolute source of truth
-    post_msgs.extend(H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS))
+    post_hist = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
+    post_msgs.extend({"role": m["role"], "content": m["content"]} for m in post_hist)
     post_msgs.append({"role":"user","content":post_q})
 
     cont = await nonstream_chat(post_msgs, max_tokens=256, temperature=0.2, cache_prompt=True)

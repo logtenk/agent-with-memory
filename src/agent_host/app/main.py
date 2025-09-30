@@ -6,9 +6,17 @@ import json
 from agent_host.app.config import HOST, PORT, CHROMA_PERSIST_ROOT
 from agent_host.app.agents import profiles
 from agent_host.app.orchestrator.session import run_turn
-from agent_host.app.models import ChatRequest, MemoryItem, RetrieveQuery, AgentProfile
+from agent_host.app.models import (
+    AgentProfile,
+    ChatMessage,
+    ChatMessagePatch,
+    ChatRequest,
+    MemoryItem,
+    RetrieveQuery,
+)
 from agent_host.app.memory import chroma_store
 from agent_host.app.orchestrator.tools import list_tools_for_prompt
+from agent_host.app.orchestrator import history as history_store
 
 app = FastAPI(title="Local LLM Host")
 
@@ -68,6 +76,25 @@ async def t_mem_update(agent_id: str, memory_id: str, patch: dict):
 async def t_mem_delete(agent_id: str, memory_id: str):
     chroma_store.delete_memory(agent_id, CHROMA_PERSIST_ROOT, memory_id)
     return {"ok": True}
+
+@app.get("/agents/{agent_id}/history")
+async def get_history(agent_id: str):
+    records = history_store.load_all_turns(CHROMA_PERSIST_ROOT, agent_id)
+    return {
+        "ok": True,
+        "history": [ChatMessage(**rec).model_dump() for rec in records],
+    }
+
+@app.put("/agents/{agent_id}/history/{message_id}")
+async def update_history(agent_id: str, message_id: str, patch: ChatMessagePatch):
+    data = patch.model_dump(exclude_unset=True, exclude_none=True)
+    ok = history_store.update_turn(CHROMA_PERSIST_ROOT, agent_id, message_id, data)
+    return {"ok": ok}
+
+@app.delete("/agents/{agent_id}/history/{message_id}")
+async def delete_history(agent_id: str, message_id: str):
+    ok = history_store.delete_turn(CHROMA_PERSIST_ROOT, agent_id, message_id)
+    return {"ok": ok}
 
 # ------- Profiles (handy for editing agent settings from scripts) --------
 
