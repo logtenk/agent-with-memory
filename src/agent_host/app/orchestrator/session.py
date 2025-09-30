@@ -84,6 +84,38 @@ async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, st
     assist_buffer = ""  # we’ll append assistant once at the end
 
     # === Primary turn ===
+    async def maybe_handle_tool_call(line: str, include_newline: bool):
+        nonlocal assist_buffer, did_memory_insert
+        ls = line.strip()
+        if not ls.startswith("TOOL_CALL:"):
+            return None
+
+        executed = False
+        outputs = []
+        try:
+            import json
+            spec = json.loads(ls.split("TOOL_CALL:", 1)[1].strip())
+            name = spec["name"]
+            payload = spec.get("payload", {})
+            if allow_tools and name in TOOLS:
+                result = TOOLS[name].handler(payload)
+                used_tools.append({"name": name, "payload": payload, "result": result})
+                if name == "memory.insert":
+                    did_memory_insert = True
+                messages.append({"role": "tool", "content": f"{name} -> {result}"})
+                cont = await nonstream_chat(messages, max_tokens=512, temperature=0.7, cache_prompt=True)
+                outputs.append({"type": "token", "data": cont["text"]})
+                assist_buffer += cont["text"]
+                executed = True
+            else:
+                text = line + ("\n" if include_newline else "")
+                outputs.append({"type": "token", "data": text})
+        except Exception:
+            text = line + ("\n" if include_newline else "")
+            outputs.append({"type": "token", "data": text})
+
+        return outputs, executed
+
     if stream:
         async for tok in stream_chat(messages, cache_prompt=True):  # see §3
             t = tok if isinstance(tok, str) else tok
@@ -91,36 +123,28 @@ async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, st
             assist_buffer += t
             while "\n" in assist_buffer:
                 line, assist_buffer = assist_buffer.split("\n", 1)
-                ls = line.strip()
-                if ls.startswith("TOOL_CALL:"):
-                    # emit nothing to user (or echo the line if you prefer)
-                    # Execute tool
-                    try:
-                        import json
-                        spec = json.loads(ls.split("TOOL_CALL:",1)[1].strip())
-                        name = spec["name"]; payload = spec.get("payload", {})
-                        if allow_tools and name in TOOLS:
-                            result = TOOLS[name].handler(payload)
-                            used_tools.append({"name":name,"payload":payload,"result":result})
-                            if name == "memory.insert":
-                                did_memory_insert = True
-                            # Continue after tool
-                            messages.append({"role":"tool","content":f"{name} -> {result}"})
-                            cont = await nonstream_chat(messages, max_tokens=512, temperature=0.7, cache_prompt=True)
-                            # stream continuation
-                            yield {"type":"token","data":cont["text"]}
-                            assist_buffer += cont["text"]
-                        else:
-                            # Not allowed/not found -> just show literal line (optional)
-                            yield {"type":"token","data": line + "\n"}
-                    except Exception:
-                        yield {"type":"token","data": line + "\n"}
-                else:
+                handled = await maybe_handle_tool_call(line, True)
+                if handled is None:
                     # normal text line
-                    yield {"type":"token","data": line + "\n"}
+                    yield {"type": "token", "data": line + "\n"}
+                else:
+                    outputs, _ = handled
+                    for out in outputs:
+                        yield out
         # flush remainder
         if assist_buffer:
-            yield {"type":"token","data": assist_buffer}
+            tail = assist_buffer
+            assist_buffer = ""
+            handled = await maybe_handle_tool_call(tail, False)
+            if handled is None:
+                assist_buffer = tail
+                yield {"type": "token", "data": assist_buffer}
+            else:
+                outputs, executed = handled
+                if not executed:
+                    assist_buffer = tail
+                for out in outputs:
+                    yield out
     else:
         out = await nonstream_chat(messages, cache_prompt=True)
         assist_buffer = out["text"]
