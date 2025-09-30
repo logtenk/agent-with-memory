@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
@@ -14,6 +15,17 @@ class ChatChunk(BaseModel):
 class ChatResponse(BaseModel):
     text: str
     used_tools: List[Dict[str, Any]] = []
+
+class ChatMessage(BaseModel):
+    message_id: str
+    role: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+class ChatMessagePatch(BaseModel):
+    role: Optional[str] = None
+    content: Optional[str] = None
 
 class MemoryItem(BaseModel):
     memory_id: Optional[str] = None
