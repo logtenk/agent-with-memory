@@ -9,6 +9,8 @@ def _profile_path(root: str, agent_id: str) -> str:
 
 def read_profile(root: str, agent_id: str) -> AgentProfile:
     path = _profile_path(root, agent_id)
+    # print(f"current dir: {os.getcwd()}")
+    # print(f"Reading profile from {path}")
     with open(path, "r", encoding="utf-8") as f:
         return AgentProfile(**json.load(f))
 

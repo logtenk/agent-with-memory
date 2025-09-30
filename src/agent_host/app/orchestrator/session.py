@@ -13,9 +13,8 @@ Current mood: {mood}
 Current date: {current_date}
 Current time: {current_time}
 Capabilities: {capabilities}
-Memory summary: {memory_summary}
-
-TOOL CALLING CONVENTION:
+Memory summary: {memory_summary}\n"""
+TOOL_HEADER = """TOOL CALLING CONVENTION:
 - To call ANY tool, emit ONE line exactly:
   TOOL_CALL: {{"name":"<toolname>","payload":{{ ... JSON matching schema ... }}}}
 - After tool results arrive (as a tool message), continue your answer.
@@ -59,7 +58,7 @@ def build_system_prompt(profile: Dict[str, Any]) -> str:
         current_time=now.strftime("%H:%M:%S"),
         capabilities=", ".join(profile["capabilities"]),
         memory_summary=profile["memory_summary"]
-    )
+    ) + TOOL_HEADER
     lines = [head]
     for t in list_tools_for_prompt():
         lines.append(f"- {t['name']}\n  When: {t['description']}\n  Input JSON schema: {t['input_schema']}")

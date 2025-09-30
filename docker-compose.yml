@@ -12,9 +12,9 @@ services:
     environment:
       # Talk to services by Docker DNS name on internal network:
       LLAMACPP_BASE_URL: "http://llama:8001"
-      CHROMA_PERSIST_ROOT: "/data/agents"
+      CHROMA_PERSIST_ROOT: "./data/agents"
       HOST: "0.0.0.0"
-      PORT: "8080"
+      PORT: "8002"
       LD_LIBRARY_PATH: "/llama.cpp/build/bin:${LD_LIBRARY_PATH}"
       PYTHONPATH : "/workspace/src:${PYTHONPATH}"
     # Expose the wrapper to localhost:8888 only (not the whole host):
