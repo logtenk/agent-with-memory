@@ -23,7 +23,7 @@ services:
       - llama
       - mcp_duckduckgo
     command: >
-      bash -lc "uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload"
+      bash -lc "uvicorn agent_host.app.main:app --host 0.0.0.0 --port 8080 --reload"
     networks: [ llmnet ]
     # llm_host itself doesn't need GPU; remove if you prefer:
     # gpus: all
