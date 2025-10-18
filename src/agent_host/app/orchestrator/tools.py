@@ -1,5 +1,5 @@
-from typing import Dict, Any, Callable, Optional, List
-import httpx, json
+from typing import Dict, Any, Callable, List
+import json
 
 # ===== Unified Tool Registry =====
 
@@ -57,26 +57,32 @@ register(ToolSpec(
 ))
 
 # ===== External: DuckDuckGo MCP adapters =====
-# Assumes your mcp/duckduckgo container exposes an HTTP API on localhost:7801
-# (adjust host/port/routes to your MCP server)
 
-DDG_BASE = "http://mcp_duckduckgo:7801"
+from ..clients import duckduckgo
 
 
 def _ddg_search(payload: Dict[str, Any]) -> Dict[str, Any]:
-    q = payload["query"]
-    k = int(payload.get("k", 5))
-    with httpx.Client(timeout=20) as c:
-        r = c.get(f"{DDG_BASE}/search", params={"q": q, "k": k})
-        r.raise_for_status()
-        return r.json()
+    query = payload["query"]
+    max_results = int(payload.get("k", 5))
+    try:
+        results = duckduckgo.client.search(query, max_results)
+        formatted = duckduckgo.client.format_results_for_llm(results)
+        return {
+            "query": query,
+            "results": [r.__dict__ for r in results],
+            "formatted": formatted,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "query": query}
+
 
 def _ddg_fetch(payload: Dict[str, Any]) -> Dict[str, Any]:
     url = payload["url"]
-    with httpx.Client(timeout=20) as c:
-        r = c.get(f"{DDG_BASE}/fetch", params={"url": url})
-        r.raise_for_status()
-        return r.json()
+    try:
+        content = duckduckgo.client.fetch_content(url)
+        return {"url": url, "content": content}
+    except Exception as exc:
+        return {"error": str(exc), "url": url}
 
 register(ToolSpec(
     name="duckduckgo.search",
