@@ -28,171 +28,32 @@ def list_tools_for_prompt() -> List[Dict[str, Any]]:
         })
     return out
 
-# ===== Internal: Memory (Chroma) =====
-
 from ..config import CHROMA_PERSIST_ROOT
-from ..memory import chroma_store
-
-def _mem_insert(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    items = payload["items"]
-    ids = chroma_store.upsert_memories(agent_id, CHROMA_PERSIST_ROOT, items)
-    return {"ok": True, "ids": ids}
-
-def _mem_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    query = payload["query"]
-    k = int(payload.get("k", 6))
-    where = payload.get("where")
-    res = chroma_store.query_memories(agent_id, CHROMA_PERSIST_ROOT, query, k, where=where)
-    return {"ok": True, "results": res}
-
-def _mem_update(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    mid = payload["memory_id"]
-    patch = payload.get("patch", {})
-    ok = chroma_store.update_memory(agent_id, CHROMA_PERSIST_ROOT, mid, patch)
-    return {"ok": ok}
-
-def _mem_delete(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    mid = payload["memory_id"]
-    chroma_store.delete_memory(agent_id, CHROMA_PERSIST_ROOT, mid)
-    return {"ok": True}
-
-register(ToolSpec(
-    name="memory.insert",
-    description="Insert durable memory items with flat metadata (type, date, time, tag).",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "items":{"type":"array","items":{
-                "type":"object",
-                "properties":{
-                    "text":{"type":"string"},
-                    "type":{"type":"string"},
-                    "date":{"type":"integer"},
-                    "time":{"type":"integer"},
-                    "tag":{"type":"string"},
-                    "salience":{"type":"number"}
-                },
-                "required":["text"]
-            }}
-        },
-        "required":["items"]
-    },
-    handler=_mem_insert
-))
-register(ToolSpec(
-    name="memory.retrieve",
-    description="Retrieve top-K relevant memories for a query, optionally filtered by metadata.",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "query":{"type":"string"},
-            "k":{"type":"integer","default":6},
-            "where":{"type":"object"}   # pass-through to Chroma metadata filter
-        },
-        "required":["query"]
-    },
-    handler=_mem_retrieve
-))
-register(ToolSpec(
-    name="memory.update",
-    description="Update a memory item by ID (partial upsert).",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "memory_id":{"type":"string"},
-            "patch":{"type":"object"}
-        },
-        "required":["memory_id","patch"]
-    },
-    handler=_mem_update
-))
-register(ToolSpec(
-    name="memory.delete",
-    description="Delete a memory item by ID.",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "memory_id":{"type":"string"}
-        },
-        "required":["memory_id"]
-    },
-    handler=_mem_delete
-))
 
 # ===== Internal: Agent profile updates =====
 
 from ..agents import profiles as agent_profiles
 
-def _agent_update_impression(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _agent_update_notes(payload: Dict[str, Any]) -> Dict[str, Any]:
     agent_id = payload.get("agent_id", "default")
     prof = agent_profiles.read_profile(CHROMA_PERSIST_ROOT, agent_id)
-    if "impression_of_user" in payload:
-        prof.impression_of_user = payload["impression_of_user"]
-    agent_profiles.write_profile(CHROMA_PERSIST_ROOT, prof)
-    return {"ok": True}
-
-def _agent_update_mood(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    mood = payload["current_mood"]
-    prof = agent_profiles.read_profile(CHROMA_PERSIST_ROOT, agent_id)
-    prof.current_mood = mood
-    agent_profiles.write_profile(CHROMA_PERSIST_ROOT, prof)
-    return {"ok": True}
-
-def _agent_update_mem_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
-    agent_id = payload.get("agent_id", "default")
-    summary = payload["memory_summary"]
-    prof = agent_profiles.read_profile(CHROMA_PERSIST_ROOT, agent_id)
-    prof.memory_summary = summary
+    if "notes" in payload:
+        prof.notes = payload["notes"]
     agent_profiles.write_profile(CHROMA_PERSIST_ROOT, prof)
     return {"ok": True}
 
 register(ToolSpec(
-    name="agent.update_impression",
-    description="Update the agent's impression of the user.",
+    name="agent.update_notes",
+    description="Update the agent's system-managed notes.",
     schema={
         "type":"object",
         "properties":{
             "agent_id":{"type":"string","default":"default"},
-            "impression_of_user":{"type":"string"}
+            "notes":{"type":"string"}
         },
-        "required":["impression_of_user"]
+        "required":["notes"]
     },
-    handler=_agent_update_impression
-))
-register(ToolSpec(
-    name="agent.update_mood",
-    description="Update the agent's current mood.",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "current_mood":{"type":"string"}
-        },
-        "required":["current_mood"]
-    },
-    handler=_agent_update_mood
-))
-register(ToolSpec(
-    name="agent.update_memory_summary",
-    description="Replace the agent's memory summary text.",
-    schema={
-        "type":"object",
-        "properties":{
-            "agent_id":{"type":"string","default":"default"},
-            "memory_summary":{"type":"string"}
-        },
-        "required":["memory_summary"]
-    },
-    handler=_agent_update_mem_summary
+    handler=_agent_update_notes
 ))
 
 # ===== External: DuckDuckGo MCP adapters =====
@@ -241,3 +102,124 @@ register(ToolSpec(
     },
     handler=_ddg_fetch
 ))
+# ===== Internal: Memory (Chroma) tools =====
+
+from ..memory import chroma_store
+
+# def _mem_insert(payload: Dict[str, Any]) -> Dict[str, Any]:
+#     agent_id = payload.get("agent_id", "default")
+#     items = payload["items"]
+#     ids = chroma_store.upsert_memories(agent_id, CHROMA_PERSIST_ROOT, items)
+#     return {"ok": True, "ids": ids}
+
+# def _mem_retrieve(payload: Dict[str, Any]) -> Dict[str, Any]:
+#     agent_id = payload.get("agent_id", "default")
+#     query = payload["query"]
+#     k = int(payload.get("k", 6))
+#     where = payload.get("where")
+#     res = chroma_store.query_memories(agent_id, CHROMA_PERSIST_ROOT, query, k, where=where)
+#     return {"ok": True, "results": res}
+
+# def _mem_update(payload: Dict[str, Any]) -> Dict[str, Any]:
+#     agent_id = payload.get("agent_id", "default")
+#     mid = payload["memory_id"]
+#     patch = payload.get("patch", {})
+#     ok = chroma_store.update_memory(agent_id, CHROMA_PERSIST_ROOT, mid, patch)
+#     return {"ok": ok}
+
+# def _mem_delete(payload: Dict[str, Any]) -> Dict[str, Any]:
+#     agent_id = payload.get("agent_id", "default")
+#     mid = payload["memory_id"]
+#     chroma_store.delete_memory(agent_id, CHROMA_PERSIST_ROOT, mid)
+#     return {"ok": True}
+
+# register(ToolSpec(
+#     name="memory.insert",
+#     description='''Insert durable memory items with flat metadata (type, date, time, tag). MEMORY SCHEMA (metadata; all optional but must be flat primitives):
+# - type: string  (e.g., "preference" | "fact" | "event" | "task")
+# - date: integer (YYYYMMDD, e.g., 20250928)
+# - time: integer (HHMMSS, e.g., 143015)
+# - tag:  string  (single tag, e.g., "travel")
+
+# When inserting a durable fact/event, use:
+# TOOL_CALL: {"name":"memory.insert","payload":{"items":[
+#   {"text":"<short distilled statement>",
+#    "type":"<type>", "date":20250928, "time":143015, "tag":"<tag>", "salience":0.8}
+# ]}}
+# ''',
+#     schema={
+#         "type":"object",
+#         "properties":{
+#             "agent_id":{"type":"string","default":"default"},
+#             "items":{"type":"array","items":{
+#                 "type":"object",
+#                 "properties":{
+#                     "text":{"type":"string"},
+#                     "type":{"type":"string"},
+#                     "date":{"type":"integer"},
+#                     "time":{"type":"integer"},
+#                     "tag":{"type":"string"},
+#                     "salience":{"type":"number"}
+#                 },
+#                 "required":["text"]
+#             }}
+#         },
+#         "required":["items"]
+#     },
+#     handler=_mem_insert
+# ))
+# register(ToolSpec(
+#     name="memory.retrieve",
+#     description='''When retrieving with metadata filters, use `where`, e.g.:
+# - by date newer than Sept 1, 2025:
+#   {"name":"memory.retrieve","payload":{
+#     "query":"<what you need>",
+#     "k":6,
+#     "where":{"date":{"$gt":20250901}}
+#   }}
+# - by a specific tag and type:
+#   {"name":"memory.retrieve","payload":{
+#     "query":"<topic>",
+#     "where":{"tag":"travel","type":"preference"}
+#   }}
+# ''',
+#     schema={
+#         "type":"object",
+#         "properties":{
+#             "agent_id":{"type":"string","default":"default"},
+#             "query":{"type":"string"},
+#             "k":{"type":"integer","default":6},
+#             "where":{"type":"object"}   # pass-through to Chroma metadata filter
+#         },
+#         "required":["query"]
+#     },
+#     handler=_mem_retrieve
+# ))
+# register(ToolSpec(
+#     name="memory.update",
+#     description="Update a memory item by ID (partial upsert).",
+#     schema={
+#         "type":"object",
+#         "properties":{
+#             "agent_id":{"type":"string","default":"default"},
+#             "memory_id":{"type":"string"},
+#             "patch":{"type":"object"}
+#         },
+#         "required":["memory_id","patch"]
+#     },
+#     handler=_mem_update
+# ))
+# register(ToolSpec(
+#     name="memory.delete",
+#     description="Delete a memory item by ID.",
+#     schema={
+#         "type":"object",
+#         "properties":{
+#             "agent_id":{"type":"string","default":"default"},
+#             "memory_id":{"type":"string"}
+#         },
+#         "required":["memory_id"]
+#     },
+#     handler=_mem_delete
+# ))
+

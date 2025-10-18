@@ -7,43 +7,15 @@ from . import history as H
 
 MAX_TURNS = 20  # pairs
 
-SYS_HEADER = """You are {character}.
-Impression of user: {impression}
-Current mood: {mood}
+SYS_HEADER = """{character}.
+System-managed notes: {notes}
 Current date: {current_date}
-Current time: {current_time}
-Capabilities: {capabilities}
-Memory summary: {memory_summary}\n"""
+Current time: {current_time}\n"""
 TOOL_HEADER = """TOOL CALLING CONVENTION:
 - To call ANY tool, emit ONE line exactly:
   TOOL_CALL: {{"name":"<toolname>","payload":{{ ... JSON matching schema ... }}}}
 - After tool results arrive (as a tool message), continue your answer.
 - If no tool is helpful, continue normally.
-
-MEMORY SCHEMA (metadata; all optional but must be flat primitives):
-- type: string  (e.g., "preference" | "fact" | "event" | "task")
-- date: integer (YYYYMMDD, e.g., 20250928)
-- time: integer (HHMMSS, e.g., 143015)
-- tag:  string  (single tag, e.g., "travel")
-
-When inserting a durable fact/event, use:
-TOOL_CALL: {"name":"memory.insert","payload":{"items":[
-  {"text":"<short distilled statement>",
-   "type":"<type>", "date":20250928, "time":143015, "tag":"<tag>", "salience":0.8}
-]}}
-
-When retrieving with metadata filters, use `where`, e.g.:
-- by date newer than Sept 1, 2025:
-  {"name":"memory.retrieve","payload":{
-    "query":"<what you need>",
-    "k":6,
-    "where":{"date":{"$gt":20250901}}
-  }}
-- by a specific tag and type:
-  {"name":"memory.retrieve","payload":{
-    "query":"<topic>",
-    "where":{"tag":"travel","type":"preference"}
-  }}
 
 AVAILABLE TOOLS:
 """
@@ -52,17 +24,38 @@ def build_system_prompt(profile: Dict[str, Any]) -> str:
     now = datetime.now()
     head = SYS_HEADER.format(
         character=profile["character"],
-        impression=profile["impression_of_user"],
-        mood=profile["current_mood"],
+        notes=profile["notes"],
         current_date=now.strftime("%Y-%m-%d"),
         current_time=now.strftime("%H:%M:%S"),
-        capabilities=", ".join(profile["capabilities"]),
-        memory_summary=profile["memory_summary"]
     ) + TOOL_HEADER
     lines = [head]
     for t in list_tools_for_prompt():
         lines.append(f"- {t['name']}\n  When: {t['description']}\n  Input JSON schema: {t['input_schema']}")
     return "\n".join(lines)
+
+# Given a system output, handle all tool calls found within it. Returns list of tool names and tool messages.
+def run_tool(assistant_output: str) -> List[tuple[str, str]]:
+    import json
+
+    outputs = []
+
+    try:
+        matches = assistant_output.split("TOOL_CALL:")[1:]
+        for match in matches:
+            print("current match: ", match, "\n\n")
+            end = match.rfind('}')
+            match = match[:end+1] if end != -1 else None
+            # Attempt to parse the JSON payload
+            spec = json.loads(match.strip())
+            name = spec["name"]
+            payload = spec.get("payload", {})
+            if name in TOOLS:
+                result = TOOLS[name].handler(payload)
+                outputs.append((name, str(result)))
+    except Exception as e:
+        print("Error processing tool call:", e)
+
+    return outputs
 
 async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, stream=True) -> AsyncGenerator[Dict[str, Any], None]:
     agent_id = profile.get("agent_id", "default")
@@ -71,125 +64,70 @@ async def run_turn(profile: Dict[str, Any], user_text: str, allow_tools=True, st
     # Reload history from disk so external edits are respected
     hist_records = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
 
-    # Append CURRENT user turn first (correct order)
-    H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "user", user_text)
-
     # Build messages for the model: system + (disk history + this user)
     messages: List[Dict[str, str]] = [{"role":"system","content":system_prompt}]
     messages.extend({"role": m["role"], "content": m["content"]} for m in hist_records)
-    messages.append({"role":"user","content":user_text})
+    if user_text != "<none>":
+        messages.append({"role":"user","content":user_text})
+        H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "user", user_text)
 
-    used_tools: List[Dict[str, Any]] = []
-    did_memory_insert = False
-    assist_buffer = ""  # we’ll append assistant once at the end
-
-    # === Primary turn ===
-    async def maybe_handle_tool_call(line: str, include_newline: bool):
-        nonlocal assist_buffer, did_memory_insert
-        ls = line.strip()
-        if not ls.startswith("TOOL_CALL:"):
-            return None
-
-        executed = False
-        outputs = []
-        try:
-            import json
-            spec = json.loads(ls.split("TOOL_CALL:", 1)[1].strip())
-            name = spec["name"]
-            payload = spec.get("payload", {})
-            if allow_tools and name in TOOLS:
-                result = TOOLS[name].handler(payload)
-                used_tools.append({"name": name, "payload": payload, "result": result})
-                if name == "memory.insert":
-                    did_memory_insert = True
-                messages.append({"role": "tool", "content": f"{name} -> {result}"})
-                cont = await nonstream_chat(messages, max_tokens=512, temperature=0.7, cache_prompt=True)
-                outputs.append({"type": "token", "data": cont["text"]})
-                assist_buffer += cont["text"]
-                executed = True
-            else:
-                text = line + ("\n" if include_newline else "")
-                outputs.append({"type": "token", "data": text})
-        except Exception:
-            text = line + ("\n" if include_newline else "")
-            outputs.append({"type": "token", "data": text})
-
-        return outputs, executed
-
+    # === Assistant response phase ===
+    assist_buffer = ""
     if stream:
         async for tok in stream_chat(messages, cache_prompt=True):  # see §3
-            t = tok if isinstance(tok, str) else tok
             # Try to split by lines to detect TOOL_CALL; keep residual
-            assist_buffer += t
-            while "\n" in assist_buffer:
-                line, assist_buffer = assist_buffer.split("\n", 1)
-                handled = await maybe_handle_tool_call(line, True)
-                if handled is None:
-                    # normal text line
-                    yield {"type": "token", "data": line + "\n"}
-                else:
-                    outputs, _ = handled
-                    for out in outputs:
-                        yield out
-        # flush remainder
-        if assist_buffer:
-            tail = assist_buffer
-            assist_buffer = ""
-            handled = await maybe_handle_tool_call(tail, False)
-            if handled is None:
-                assist_buffer = tail
-                yield {"type": "token", "data": assist_buffer}
-            else:
-                outputs, executed = handled
-                if not executed:
-                    assist_buffer = tail
-                for out in outputs:
-                    yield out
+            assist_buffer += tok
+            yield {"type":"token","data":tok}
     else:
         out = await nonstream_chat(messages, cache_prompt=True)
         assist_buffer = out["text"]
-        yield {"type":"token","data": assist_buffer}
+        yield {"type":"token","data":assist_buffer}
 
-    # Append the assistant message ONCE (complete text)
-    if assist_buffer:
-        H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "assistant", assist_buffer)
+    H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "assistant", assist_buffer)
+    messages.append({"role":"assistant","content":assist_buffer})
+
+    # === Tool handling phase ===
+    if allow_tools:
+        tool_outputs = run_tool(assist_buffer)
+        if tool_outputs:
+            for name, result in tool_outputs:
+                H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "tool", f"{name} -> {result}")
+                messages.append({"role":"tool", "content":f"{name} -> {result}"})
+                yield {"type":"tool","data": {"Tool name": name, "Tool result": result}}
+            # After tool calls, we could have the assistant continue
+            followup_out = await nonstream_chat(
+                messages,
+                cache_prompt=True
+            )
+            followup_text = followup_out["text"]
+            H.append_turn(CHROMA_PERSIST_ROOT, agent_id, "assistant", followup_text)
+            messages.append({"role":"assistant","content":followup_text})
+            yield {"type":"token","data":followup_text}
 
     # === Post-turn maintenance ===
-    post_q = (
-        "Decide if you should update:\n"
-        "- agent.update_impression (impression_of_user)\n"
-        "- agent.update_mood (current_mood)\n"
-        "- agent.update_memory_summary (memory_summary)\n"
-        "- memory.insert (new durable facts)\n"
-        "Reply with zero or more TOOL_CALL lines."
-    )
-    post_msgs = [{"role":"system","content":system_prompt}]
-    # Reload again (user+assistant now on disk) to keep absolute source of truth
-    post_hist = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
-    post_msgs.extend({"role": m["role"], "content": m["content"]} for m in post_hist)
-    post_msgs.append({"role":"user","content":post_q})
+    # post_q = (
+    #     "Decide if you should update:\n"
+    #     "- agent.update_notes"
+    #     "Reply with zero or more TOOL_CALL lines."
+    # )
+    # post_msgs = [{"role":"system","content":system_prompt}]
+    # # Reload again (user+assistant now on disk) to keep absolute source of truth
+    # post_hist = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
+    # post_msgs.extend({"role": m["role"], "content": m["content"]} for m in post_hist)
+    # post_msgs.append({"role":"user","content":post_q})
 
-    cont = await nonstream_chat(post_msgs, max_tokens=256, temperature=0.2, cache_prompt=True)
-    for line in cont["text"].splitlines():
-        if line.strip().startswith("TOOL_CALL:"):
-            import json
-            try:
-                spec = json.loads(line.strip().split("TOOL_CALL:",1)[1].strip())
-                name = spec["name"]; payload = spec.get("payload", {})
-                if name in TOOLS:
-                    result = TOOLS[name].handler(payload)
-                    used_tools.append({"name":name,"payload":payload,"result":result})
-                    if name == "memory.insert":
-                        did_memory_insert = True
-            except Exception:
-                pass
+    # cont = await nonstream_chat(post_msgs, max_tokens=256, temperature=0.2, cache_prompt=True)
+    # for line in cont["text"].splitlines():
+    #     if line.strip().startswith("TOOL_CALL:"):
+    #         import json
+    #         try:
+    #             spec = json.loads(line.strip().split("TOOL_CALL:",1)[1].strip())
+    #             name = spec["name"]; payload = spec.get("payload", {})
+    #             if name in TOOLS:
+    #                 result = TOOLS[name].handler(payload)
+    #         except Exception:
+    #             pass
 
-    # === History policy: clear after memory.insert ===
-    if did_memory_insert:
-        H.clear_history(CHROMA_PERSIST_ROOT, agent_id)
-    else:
-        # Truncate to last MAX_TURNS pairs
-        msgs = H.load_history(CHROMA_PERSIST_ROOT, agent_id, max_pairs=MAX_TURNS)
-        H.write_all(CHROMA_PERSIST_ROOT, agent_id, msgs)
+    yield {"type":"done","data":{}}
 
-    yield {"type":"done", "data":{"used_tools":used_tools}}
+    

@@ -53,8 +53,9 @@ async def chat(req: ChatRequest):
             if ev["type"] == "token":
                 # one token (or line chunk) at a time
                 yield {"event": "chunk", "data": ev["data"]}
-            else:
-                # final metadata (used_tools, etc.)
+            elif ev["type"] == "tool":
+                yield {"event": "chunk", "data": json.dumps(ev["data"])}
+            elif ev["type"] == "done":
                 yield {"event": "done", "data": json.dumps(ev["data"])}
     return EventSourceResponse(event_gen())
 

@@ -46,12 +46,7 @@ class RetrieveQuery(BaseModel):
 class AgentProfile(BaseModel):
     agent_id: str
     character: str
-    impression_of_user: str
-    current_mood: str
-    capabilities: List[str]
-    memory_path: str
-    memory_summary: str
-    tool_instructions: str
+    notes: str
 
 
 class AgentProfileCreate(AgentProfile):
@@ -60,9 +55,4 @@ class AgentProfileCreate(AgentProfile):
 
 class AgentProfilePatch(BaseModel):
     character: Optional[str] = None
-    impression_of_user: Optional[str] = None
-    current_mood: Optional[str] = None
-    capabilities: Optional[List[str]] = None
-    memory_path: Optional[str] = None
-    memory_summary: Optional[str] = None
-    tool_instructions: Optional[str] = None
+    notes: Optional[str] = None

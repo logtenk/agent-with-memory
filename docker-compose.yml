@@ -11,22 +11,20 @@ services:
       - /mnt/c/Users/icymi/.lmstudio/models:/models:ro  # models (ro is fine)
     environment:
       # Talk to services by Docker DNS name on internal network:
-      LLAMACPP_BASE_URL: "http://llama:8001"
+      LLAMACPP_BASE_URL: "http://llama:50000"
       CHROMA_PERSIST_ROOT: "./data/agents"
       HOST: "0.0.0.0"
-      PORT: "8002"
+      PORT: "50001"
       LD_LIBRARY_PATH: "/llama.cpp/build/bin:${LD_LIBRARY_PATH}"
       PYTHONPATH : "/workspace/src:${PYTHONPATH}"
     # Expose the wrapper to localhost:8888 only (not the whole host):
-    expose:
-      - "8002"
     ports:
-      - "127.0.0.1:8002:8002"
+      - "127.0.0.1:50001:50001"
     depends_on:
       - llama
       - mcp_duckduckgo
     command: >
-      bash -lc "uvicorn agent_host.app.main:app --host 0.0.0.0 --port 8002 --reload"
+      bash -lc "uvicorn agent_host.app.main:app --host 0.0.0.0 --port 50001 --reload"
     networks: [ llmnet ]
     # llm_host itself doesn't need GPU; remove if you prefer:
     # gpus: all
@@ -49,12 +47,12 @@ services:
     expose:
       - "8001"
     ports:
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:50000:50000"
     command: >
       bash -lc "/llama.cpp/build/bin/llama-server
       --model /models/lmstudio-community/gemma-3-12b-it-GGUF/gemma-3-12b-it-Q4_K_M.gguf
       --mmproj /models/lmstudio-community/gemma-3-12b-it-GGUF/mmproj-model-f16.gguf
-      --host 0.0.0.0 --port 8001
+      --host 0.0.0.0 --port 50000
       --ctx-size 8192
       --n-gpu-layers 999
       --flash-attn on
@@ -68,6 +66,8 @@ services:
     container_name: mcp_duckduckgo
     expose:
       - "7801"                            # internal port
+    ports:
+      - "127.0.0.1:50002:50002"
     # Publish to localhost only for security:
     networks: [ llmnet ]
 

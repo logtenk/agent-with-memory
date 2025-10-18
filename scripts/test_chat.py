@@ -10,26 +10,10 @@ import requests
 import sseclient
 
 
-API_ROOT = "http://127.0.0.1:8002"
+API_ROOT = "http://127.0.0.1:50001"
 CHAT_URL = f"{API_ROOT}/chat"
 HISTORY_URL = f"{API_ROOT}/agents/{{agent_id}}/history"
-
-
-def print_tool_calls(used_tools: List[Dict]):
-    """Pretty-print tool calls returned from the server."""
-
-    if not used_tools:
-        print("No tool calls recorded for this turn.")
-        return
-
-    print("[Tool calls]")
-    for idx, tool in enumerate(used_tools, start=1):
-        name = tool.get("name", "<unknown>")
-        payload = json.dumps(tool.get("payload"), indent=2, ensure_ascii=False, default=str)
-        result = json.dumps(tool.get("result"), indent=2, ensure_ascii=False, default=str)
-        print(f"{idx}. {name}")
-        print(indent("Payload:\n" + payload, "   "))
-        print(indent("Result:\n" + result, "   "))
+STREAM = True
 
 
 def fetch_history(agent_id: str) -> List[Dict]:
@@ -49,7 +33,7 @@ def print_history(history: List[Dict]):
         return
 
     print("Current chat history:")
-    for idx, message in enumerate(history, start=1):
+    for idx, message in enumerate(history):
         msg_id = message.get("message_id", "<unknown>")
         role = message.get("role", "?")
         content = message.get("content", "")
@@ -109,7 +93,7 @@ def chat_round(agent_id: str, user_text: str):
             "stream": True,
             "tool_calls_allowed": True,
         },
-        stream=True,
+        stream=STREAM,
         timeout=10,
     )
     r.raise_for_status()
@@ -117,20 +101,16 @@ def chat_round(agent_id: str, user_text: str):
 
     print("Assistant:", end=" ", flush=True)
     response_text = ""
-    used_tools: List[Dict] = []
 
     for ev in client.events():
         if ev.event == "chunk":
             print(ev.data, end="", flush=True)
             response_text += ev.data
         elif ev.event == "done":
-            meta = json.loads(ev.data)
-            used_tools = meta.get("used_tools", [])
             break
 
     print("\n")
-    print_tool_calls(used_tools)
-    return response_text, used_tools
+    return response_text
 
 
 def print_help():
